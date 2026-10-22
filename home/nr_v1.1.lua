@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 8
+-- Reactor Control v1.2 build 9
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "8"
+local build = "9"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -1763,6 +1763,8 @@ local function drawSettingsMenuDialog()
     removeAllFields()
     -- Заголовки
     buffer.drawText(modalX + 11, modalY + 1, 0x000000, "Настройки Reactor Control v" .. version .. "." .. build)
+    buffer.drawRectangle(modalX + 52, modalY + 1, 11, 1, 0x444444, 0, " ")
+    buffer.drawText(modalX + 54, modalY + 1, 0xFFFFFF, "Справка")
 
     buffer.drawText(modalX + 7, modalY + 3, 0x000000, "Порог жидкости")
     createSearchField(modalX + 3, modalY + 5, 22, "Введите порог(Mb)")
@@ -1891,7 +1893,13 @@ local function drawSettingsMenuDialog()
             end
         end
 
-        if eventType == "touch" then
+        if eventType == "touch" and eventData[4] == modalY + 1 and eventData[3] >= modalX + 52 and eventData[3] < modalX + 63 then
+            local settingsFrame = buffer.copy(1, 1, 100, 30)
+            ui.settingsHelp()
+            buffer.paste(1, 1, settingsFrame)
+            drawAllFields()
+            buffer.drawChanges()
+        elseif eventType == "touch" then
             local _, _, x, y, button, uuid = table.unpack(eventData)
 
             for i, f in ipairs(searchFields) do
@@ -2101,9 +2109,9 @@ local function drawSettingsMenu()
     ui.render()
 end
 
-local function drawInfoMenuDialog()
+local function drawInfoMenuDialog(nested)
     local isStart = false
-    if work == true and any_reactor_on == true then
+    if not nested and work == true and any_reactor_on == true then
         isStart = true
         stop()
     end
@@ -2342,6 +2350,8 @@ local function drawInfoMenuDialog()
 end
 
 -- -----------------------------------------------------
+ui.settingsHelp = function() return drawInfoMenuDialog(true) end
+
 local function drawInfoMenu()
     ui.modal = true
     buffer.setResolution(100, 30)
@@ -3072,7 +3082,15 @@ end
 
 -- ----------------------------------------------------------------------------------------------------
 function ui.text(column, row, width, text, color)
-    buffer.drawText(column, row, color or ui.foreground, unicode.sub(tostring(text), 1, width))
+    text = tostring(text)
+    local used, last = 0, 0
+    for index = 1, unicode.len(text) do
+        local symbol = unicode.sub(text, index, index)
+        local size = (unicode.wlen or unicode.len)(symbol)
+        if used + size > width then break end
+        used, last = used + size, index
+    end
+    if last > 0 then buffer.drawText(column, row, color or ui.foreground, unicode.sub(text, 1, last)) end
 end
 
 function ui.button(column, row, width, text, action, color)
@@ -3230,17 +3248,16 @@ function ui.controls()
             {"СТОП ВСЕ", "clickArea1", "ЗАПУСК ВСЕ", "clickArea4"},
             {"Обновить МЭ", "clickArea5", "Ед.: " .. status_metric, "clickArea6"},
             {"Порог +2500", "plus", "Порог -2500", "minus"},
-            {"Настройки", "clickArea19", "Справка", "clickArea20"},
+            {"Настройки", "clickArea19"},
             {"Перезапуск", "clickArea2", "Выход", "clickArea3"}
         } or {
             {"СТОП ВСЕ", "clickArea1", "ЗАПУСК ВСЕ", "clickArea4"},
-            {"Настройки", "clickArea19", "Справка", "clickArea20"},
             {"Перезапуск", "clickArea2", "Выход", "clickArea3"}
         }
         local top = ui.page == "log" and 15 or 19
         for index, entry in ipairs(rows) do
-            ui.button(2, top + (index - 1) * 2, 18, entry[1], entry[2], index == 1 and ui.bad or nil)
-            ui.button(22, top + (index - 1) * 2, 18, entry[3], entry[4], index == 1 and ui.good or nil)
+            ui.button(2, top + (index - 1) * 2, entry[3] and 18 or 38, entry[1], entry[2], index == 1 and ui.bad or nil)
+            if entry[3] then ui.button(22, top + (index - 1) * 2, 18, entry[3], entry[4], index == 1 and ui.good or nil) end
         end
         return
     end
@@ -3251,17 +3268,14 @@ function ui.controls()
         ui.button(28, 23, 23, "Единицы: " .. status_metric, "clickArea6")
         ui.button(2, 25, 23, "Порог +2500", "plus")
         ui.button(28, 25, 23, "Порог -2500", "minus")
-        ui.button(2, 27, 23, "Настройки", "clickArea19")
-        ui.button(28, 27, 23, "Справка", "clickArea20")
+        ui.button(2, 27, 49, "Настройки", "clickArea19")
         ui.button(2, 29, 23, "Перезапуск", "clickArea2", ui.muted)
         ui.button(28, 29, 23, "Выход", "clickArea3", ui.muted)
     else
         ui.button(2, 23, 23, "СТОП ВСЕ", "clickArea1", ui.bad)
         ui.button(28, 23, 23, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
-        ui.button(2, 25, 23, "Настройки", "clickArea19")
-        ui.button(28, 25, 23, "Справка", "clickArea20")
-        ui.button(2, 27, 23, "Перезапуск", "clickArea2", ui.muted)
-        ui.button(28, 27, 23, "Выход", "clickArea3", ui.muted)
+        ui.button(2, 25, 23, "Перезапуск", "clickArea2", ui.muted)
+        ui.button(28, 25, 23, "Выход", "clickArea3", ui.muted)
     end
 end
 
@@ -3366,11 +3380,12 @@ function ui.render()
             local column, row = card.column, card.row
             local contentWidth = card.width - 2
             local scale = card.fontScale or 1
-            local function cardText(offset, width, text, color)
+            local function cardText(offset, width, text, color, inset)
+                local textColumn = column + 1 + (inset or 0)
                 if scale == 1 then
-                    ui.text(column + 1, row + offset, width, text, color)
+                    ui.text(textColumn, row + offset, width, text, color)
                 else
-                    layout.scaledText(buffer, unicode, column + 1, row + offset * scale, width, tostring(text), color or ui.foreground)
+                    layout.scaledText(buffer, unicode, textColumn, row + offset * scale, width, tostring(text), color or ui.foreground)
                 end
             end
             if showArt then
@@ -3386,7 +3401,8 @@ function ui.render()
                 local title = ui.cardName(slot)
                 if card.names and card.names[ui.reactorPage] ~= "" then title = "#" .. index .. " " .. title end
                 local stateColor = reactor_aborted[index] and ui.bad or (reactor_work[index] and ui.good or ui.bad)
-                cardText(0, card.width - 6, title, stateColor)
+                ui.text(column + 1, row, 2, modeSymbol, reactor_aborted[index] and ui.bad or ui.muted)
+                cardText(0, card.width - 9, title, stateColor, 3)
                 if not ui.editing then
                     local iconColumn = column + card.width - 4
                     ui.text(iconColumn, row, 4, reactor_aborted[index] and "[!]" or "[⭘]", stateColor)
@@ -3394,17 +3410,16 @@ function ui.render()
                         table.insert(ui.buttons, {column = iconColumn, row = row, width = 4, action = index})
                     end
                 end
-                if reactor_aborted[index] then cardText(1, contentWidth, "   АВАРИЯ", ui.bad) end
-                ui.text(column + 1, row + scale, 2, modeSymbol, reactor_aborted[index] and ui.bad or ui.muted)
-                cardText(2, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
-                cardText(3, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
+                cardText(1, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
+                cardText(2, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
                 local coolant = "-"
                 if reactor_type[index] == "Fluid" then
                     coolant = ui.coolantPercent(reactor_getcoolant[index], reactor_maxcoolant[index])
                 end
-                cardText(4, contentWidth, "Буфер: " .. coolant)
-                cardText(5, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/с")
+                cardText(3, contentWidth, "Буфер: " .. coolant)
+                cardText(4, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/с")
                 if reactor_aborted[index] then
+                    cardText(5, contentWidth, "АВАРИЯ", ui.bad)
                     ui.text(column + 1, row + card.height - 1, contentWidth, reason or "Запуск заблокирован", ui.bad)
                 end
             elseif ui.editing then
