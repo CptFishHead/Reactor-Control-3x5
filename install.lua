@@ -28,7 +28,9 @@ end
 local function write(path, content)
     local file = assert(io.open(path, "w"))
     assert(file:write(content))
-    assert(file:close())
+    assert(file:flush())
+    local closed, closeError = file:close()
+    if closed == false or closeError then error(closeError or "Не удалось закрыть файл") end
 end
 
 local function directory(path)

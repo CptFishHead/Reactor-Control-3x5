@@ -96,7 +96,9 @@ function layout.write(path, cards)
         for _, card in ipairs(cards) do
             assert(file:write(string.format("%d %d %d %d\n", card.column, card.row, card.width, card.height)))
         end
-        assert(file:close())
+        assert(file:flush())
+        local closed, closeError = file:close()
+        if closed == false or closeError then error(closeError or "Не удалось закрыть файл раскладки") end
     end)
     if not written then
         pcall(file.close, file)
