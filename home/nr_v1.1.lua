@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 3
+-- Reactor Control v1.2 build 4
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "3"
+local build = "4"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -3217,10 +3217,8 @@ function ui.metrics()
 end
 
 function ui.controls()
-    if ui.editing then
-        ui.button(2, 27, 23, "СТОП ВСЕ", "clickArea1", ui.bad)
-        ui.button(28, 27, 23, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
-    elseif ui.page == "log" then
+    if ui.editing then return end
+    if ui.page == "log" then
         ui.button(2, 21, 23, "СТОП ВСЕ", "clickArea1", ui.bad)
         ui.button(28, 21, 23, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
         ui.button(2, 23, 23, "Обновить МЭ", "clickArea5")
@@ -3241,6 +3239,24 @@ function ui.controls()
     end
 end
 
+function ui.layoutGrid()
+    local minor = theme and 0xD8E0E5 or 0x26323A
+    local major = theme and 0xB3C2CC or 0x3A4B57
+    for row = layout.bounds.top, layout.bounds.bottom do
+        for column = layout.bounds.left, layout.bounds.right do
+            local vertical = (column - layout.bounds.left) % 5 == 0
+            local horizontal = (row - layout.bounds.top) % 2 == 0
+            if vertical or horizontal then
+                ui.text(column, row, 1, vertical and (horizontal and "+" or "│") or "·", vertical and major or minor)
+            end
+        end
+    end
+    for column = 10, layout.bounds.right, 10 do
+        local label = tostring(column)
+        ui.text(column - #label + 1, layout.bounds.top - 1, #label, label, major)
+    end
+end
+
 function ui.render()
     if ui.modal then return end
     ui.background = theme and 0xF1F3F5 or 0x15191D
@@ -3251,6 +3267,7 @@ function ui.render()
     ui.bad = theme and 0xB82030 or 0xFF737D
     ui.buttons = {}
     buffer.clear(ui.background)
+    if ui.editing then ui.layoutGrid() end
     local showArt = ui.page == "reactors" and not ui.editing
     if showArt then ui.drawReactorArt() end
     ui.text(2, 1, 26, "REACTOR CONTROL " .. progVer)
@@ -3336,6 +3353,7 @@ function ui.render()
         ui.button(18, 23, 53, ui.renaming and ((ui.nameDraft or "") .. "|") or ui.cardName(ui.selected), "rename")
         ui.text(73, 23, 26, "#" .. ((ui.reactorPage - 1) * 6 + ui.selected) .. "  " .. selected.width .. "x" .. selected.height, ui.muted)
         ui.text(2, 24, 97, ui.renaming and "Введи название. Enter: принять. Esc: отменить ввод." or "Tab: выбрать и поднять карточку. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
+        ui.text(2, 26, 97, "Позиция: X=" .. selected.column .. "  Y=" .. selected.row .. "    Размер: " .. selected.width .. "x" .. selected.height .. "    Сетка: 1 символ", ui.muted)
         if ui.notice then ui.text(55, 30, 44, ui.notice, ui.muted) end
     else
         ui.metrics()
