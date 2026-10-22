@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 5
+-- Reactor Control v1.2 build 6
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "5"
+local build = "6"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -3296,20 +3296,28 @@ function ui.render()
             local card = ui.cards[slot]
             local column, row = card.column, card.row
             local contentWidth = card.width - 2
+            local scale = card.fontScale or 1
+            local function cardText(offset, width, text, color)
+                if scale == 1 then
+                    ui.text(column + 1, row + offset, width, text, color)
+                else
+                    layout.scaledText(buffer, unicode, column + 1, row + offset * scale, width, tostring(text), color or ui.foreground)
+                end
+            end
             if showArt then
                 buffer.drawRectangle(column, row, card.width, card.height, ui.background, 0, " ")
                 ui.drawReactorArt(column, row, card.width, card.height)
             end
             buffer.drawRectangle(column, row, card.width, card.height, ui.panel, 0, " ", showArt and 0.65 or nil)
             if ui.editing and ui.selected == slot then
-                buffer.drawRectangle(column, row, card.width, 1, theme and 0xB5D7F0 or 0x314C61, 0, " ")
+                buffer.drawRectangle(column, row, card.width, scale, theme and 0xB5D7F0 or 0x314C61, 0, " ")
             end
             if index <= reactors then
                 local state = reactor_aborted[index] and "АВАРИЯ" or (reactor_work[index] and "РАБОТА" or "СТОП")
                 local title = ui.cardName(slot)
                 if card.names and card.names[ui.reactorPage] ~= "" then title = "#" .. index .. " " .. title end
                 local stateColor = reactor_aborted[index] and ui.bad or (reactor_work[index] and ui.good or ui.bad)
-                ui.text(column + 1, row, card.width - 6, title, stateColor)
+                cardText(0, card.width - 6, title, stateColor)
                 if not ui.editing then
                     local iconColumn = column + card.width - 4
                     ui.text(iconColumn, row, 4, reactor_aborted[index] and "[!]" or "[⭘]", stateColor)
@@ -3317,20 +3325,20 @@ function ui.render()
                         table.insert(ui.buttons, {column = iconColumn, row = row, width = 4, action = index})
                     end
                 end
-                ui.text(column + 1, row + 1, contentWidth, (reactor_type[index] or "-") .. " | " .. state, reactor_aborted[index] and ui.bad or ui.muted)
-                ui.text(column + 1, row + 2, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
-                ui.text(column + 1, row + 3, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
+                cardText(1, contentWidth, (reactor_type[index] or "-") .. " | " .. state, reactor_aborted[index] and ui.bad or ui.muted)
+                cardText(2, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
+                cardText(3, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
                 local coolant = "-"
                 if reactor_type[index] == "Fluid" then
                     coolant = ui.coolantPercent(reactor_getcoolant[index], reactor_maxcoolant[index])
                 end
-                ui.text(column + 1, row + 4, contentWidth, "Буфер: " .. coolant)
-                ui.text(column + 1, row + 5, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/с")
+                cardText(4, contentWidth, "Буфер: " .. coolant)
+                cardText(5, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/с")
                 if reactor_aborted[index] then
                     ui.text(column + 1, row + card.height - 1, contentWidth, reason or "Запуск заблокирован", ui.bad)
                 end
             elseif ui.editing then
-                ui.text(column + 1, row, contentWidth, ui.cardName(slot), ui.muted)
+                cardText(0, contentWidth, ui.cardName(slot), ui.muted)
             end
             if ui.editing then
                 ui.text(column + 1, row + card.height - 1, contentWidth, "Перетащить", ui.muted)
@@ -3360,7 +3368,8 @@ function ui.render()
         ui.button(73, 25, 26, "Сохранить", "save", ui.good)
         ui.button(73, 27, 26, "Отмена", "cancel")
         ui.text(2, 27, 30, "X:" .. selected.column .. "  Y:" .. selected.row .. "  " .. selected.width .. "x" .. selected.height, ui.muted)
-        ui.text(36, 27, 32, ui.renaming and "Enter: принять | Esc: отмена" or "Tab: следующая карточка", ui.muted)
+        ui.button(36, 27, 14, "Шрифт ×1", "font1", (selected.fontScale or 1) == 1 and ui.good or ui.muted)
+        ui.button(54, 27, 14, "Шрифт ×2", "font2", selected.fontScale == 2 and ui.good or ui.muted)
         ui.text(2, 29, 97, ui.renaming and "Введи название с клавиатуры. После ввода сохрани раскладку." or "Тяни карточку или угол +. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
         if ui.notice then ui.text(55, 30, 44, ui.notice, ui.muted) end
     else
@@ -3438,6 +3447,17 @@ function ui.editAction(action)
         for slot, card in ipairs(ui.cards) do card.names = previous[slot].names end
         ui.dragging = nil
         ui.notice = "Стандартная раскладка. Нажми Сохранить."
+    elseif action == "font1" or action == "font2" then
+        ui.dragging = nil
+        local card = ui.cards[ui.selected]
+        card.fontScale = action == "font2" and 2 or 1
+        if card.fontScale == 2 then
+            card.width = math.max(card.width, 60)
+            card.height = math.max(card.height, 13)
+        end
+        layout.clamp(card)
+        ui.bringFront(ui.selected)
+        ui.notice = "Шрифт ×" .. card.fontScale .. ". Нажми Сохранить."
     elseif action == "width-" or action == "width+" or action == "height-" or action == "height+" then
         local previous = layout.clone(ui.cards)
         local card = ui.cards[ui.selected]

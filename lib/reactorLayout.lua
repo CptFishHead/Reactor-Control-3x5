@@ -12,7 +12,7 @@ function layout.defaults()
             row = 4 + math.floor((slot - 1) / 3) * 9,
             width = 31,
             height = 8,
-            layer = slot,
+            layer = slot, fontScale = 1,
             names = {"", ""}
         }
     end
@@ -24,7 +24,7 @@ function layout.clone(cards)
     for slot, card in ipairs(cards) do
         copy[slot] = {
             column = card.column, row = card.row, width = card.width, height = card.height,
-            layer = card.layer or slot, names = {card.names and card.names[1] or "", card.names and card.names[2] or ""}
+            layer = card.layer or slot, fontScale = card.fontScale or 1, names = {card.names and card.names[1] or "", card.names and card.names[2] or ""}
         }
     end
     return copy
@@ -45,8 +45,10 @@ function layout.validate(cards)
                 return false, "Координаты должны быть целыми числами"
             end
         end
-        if card.width < layout.minimum.width or card.height < layout.minimum.height then
-            return false, "Минимальный размер: 24x7"
+        local scale = card.fontScale or 1
+        if scale ~= 1 and scale ~= 2 then return false, "Масштаб шрифта: 1 или 2" end
+        if card.width < layout.minimum.width * scale or card.height < 6 * scale + 1 then
+            return false, "Минимальный размер: " .. (24 * scale) .. "x" .. (6 * scale + 1)
         end
         if card.column < layout.bounds.left or card.row < layout.bounds.top
             or card.column + card.width - 1 > layout.bounds.right or card.row + card.height - 1 > layout.bounds.bottom then
@@ -70,8 +72,9 @@ function layout.validate(cards)
 end
 
 function layout.clamp(card)
-    card.width = math.max(layout.minimum.width, math.min(layout.bounds.right - layout.bounds.left + 1, math.floor(card.width)))
-    card.height = math.max(layout.minimum.height, math.min(layout.bounds.bottom - layout.bounds.top + 1, math.floor(card.height)))
+    local scale = card.fontScale or 1
+    card.width = math.max(layout.minimum.width * scale, math.min(layout.bounds.right - layout.bounds.left + 1, math.floor(card.width)))
+    card.height = math.max(6 * scale + 1, math.min(layout.bounds.bottom - layout.bounds.top + 1, math.floor(card.height)))
     card.column = math.max(layout.bounds.left, math.min(layout.bounds.right - card.width + 1, math.floor(card.column)))
     card.row = math.max(layout.bounds.top, math.min(layout.bounds.bottom - card.height + 1, math.floor(card.row)))
     return card
@@ -87,20 +90,23 @@ function layout.read(path)
     if not file then return layout.defaults() end
     local cards = {}
     local format = file:read("*l")
-    if format == "RC-LAYOUT-1" or format == "RC-LAYOUT-2" then
+    if format == "RC-LAYOUT-1" or format == "RC-LAYOUT-2" or format == "RC-LAYOUT-3" then
         for slot = 1, 6 do
             local line = file:read("*l") or ""
-            local column, row, width, height, layer
-            if format == "RC-LAYOUT-2" then
+            local column, row, width, height, layer, fontScale
+            if format == "RC-LAYOUT-3" then
+                column, row, width, height, layer, fontScale = line:match("^(%d+) (%d+) (%d+) (%d+) (%d+) (%d+)$")
+            elseif format == "RC-LAYOUT-2" then
                 column, row, width, height, layer = line:match("^(%d+) (%d+) (%d+) (%d+) (%d+)$")
             else
                 column, row, width, height = line:match("^(%d+) (%d+) (%d+) (%d+)$")
             end
             local names = {"", ""}
-            if format == "RC-LAYOUT-2" then names = {file:read("*l"), file:read("*l")} end
+            if format ~= "RC-LAYOUT-1" then names = {file:read("*l"), file:read("*l")} end
             cards[slot] = {
                 column = tonumber(column), row = tonumber(row), width = tonumber(width), height = tonumber(height),
-                layer = format == "RC-LAYOUT-2" and tonumber(layer) or slot, names = names
+                layer = format ~= "RC-LAYOUT-1" and tonumber(layer) or slot, names = names,
+                fontScale = format == "RC-LAYOUT-3" and tonumber(fontScale) or 1
             }
         end
     end
@@ -118,9 +124,9 @@ function layout.write(path, cards)
     local file, errorMessage = io.open(temporary, "w")
     if not file then return false, tostring(errorMessage or "Не удалось открыть файл раскладки") end
     local written, writeError = pcall(function()
-        assert(file:write("RC-LAYOUT-2\n"))
+        assert(file:write("RC-LAYOUT-3\n"))
         for slot, card in ipairs(cards) do
-            assert(file:write(string.format("%d %d %d %d %d\n", card.column, card.row, card.width, card.height, card.layer or slot)))
+            assert(file:write(string.format("%d %d %d %d %d %d\n", card.column, card.row, card.width, card.height, card.layer or slot, card.fontScale or 1)))
             assert(file:write((card.names and card.names[1] or "") .. "\n" .. (card.names and card.names[2] or "") .. "\n"))
         end
         assert(file:flush())
@@ -145,6 +151,60 @@ function layout.write(path, cards)
         return false, tostring(moveError or "Не удалось сохранить раскладку")
     end
     return true
+end
+
+local glyphs = {
+    ["0"]="6999996", ["1"]="2622227", ["2"]="691248F", ["3"]="E161196", ["4"]="99F1111",
+    ["5"]="F88E196", ["6"]="688E996", ["7"]="F112244", ["8"]="6996996", ["9"]="6997116",
+    A="699F999", B="E99E99E", C="6988896", D="E99999E", E="F88E88F", F="F88E888",
+    G="698B996", H="999F999", I="7222227", J="1111196", K="99ACA99", L="888888F",
+    M="9FF9999", N="9DDBB99", O="6999996", P="E99E888", Q="69999B7", R="E99EA99",
+    S="788619E", T="F222222", U="9999996", V="9999966", W="9999FF9", X="9966699",
+    Y="9996222", Z="F11248F", [" "]="0000000", ["-"]="000F000", ["—"]="000F000",
+    ["."]="0000022", [":"]="0220220", ["/"]="1122448", ["|"]="2222222", ["%"]="9912489",
+    ["#"]="5F55F50", ["°"]="6960000", ["+"]="0027200", ["_"]="000000F", ["!"]="2222202",
+    ["?"]="6912202", ["("]="1244421", [")"]="8422248", ["["]="6444446", ["]"]="6222226",
+    ["Б"]="F88E99E", ["Г"]="F888888", ["Д"]="366666F", ["Ж"]="99F6F99", ["З"]="E11611E",
+    ["И"]="99BBD99", ["Й"]="699BBD9", ["Л"]="3666669", ["П"]="F999999", ["У"]="999711E",
+    ["Ф"]="2FFFF22", ["Ц"]="AAAAF11", ["Ч"]="9997111", ["Ш"]="999999F", ["Щ"]="9999F11",
+    ["Ъ"]="CC4E55E", ["Ы"]="999DDDF", ["Ь"]="888E99E", ["Э"]="6917196", ["Ю"]="BDAEADB",
+    ["Я"]="7997599", ["Ё"]="90FE88F"
+}
+
+function layout.scaledText(buffer, unicode, column, row, width, text, color)
+    if not layout.font then
+        layout.font = {}
+        local upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+        local lower = "abcdefghijklmnopqrstuvwxyzабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+        local aliases = {["А"]="A", ["В"]="B", ["Е"]="E", ["К"]="K", ["М"]="M", ["Н"]="H", ["О"]="O", ["Р"]="P", ["С"]="C", ["Т"]="T", ["Х"]="X"}
+        for symbol, pattern in pairs(glyphs) do layout.font[symbol] = pattern end
+        for index = 1, unicode.len(upper) do
+            local symbol = unicode.sub(upper, index, index)
+            local pattern = glyphs[aliases[symbol] or symbol]
+            layout.font[symbol] = pattern
+            layout.font[unicode.sub(lower, index, index)] = pattern
+        end
+    end
+    local weights = {{1, 2, 4, 64}, {8, 16, 32, 128}}
+    for index = 1, math.min(unicode.len(text), math.floor(width / 2)) do
+        local pattern = layout.font[unicode.sub(text, index, index)] or glyphs["?"]
+        for cellRow = 0, 1 do
+            local line = ""
+            for cellColumn = 0, 1 do
+                local mask = 0
+                for dotRow = 1, 4 do
+                    local pixelRow = cellRow * 4 + dotRow
+                    local bits = tonumber(pattern:sub(pixelRow, pixelRow), 16) or 0
+                    for dotColumn = 1, 2 do
+                        local power = 2 ^ (4 - cellColumn * 2 - dotColumn)
+                        if math.floor(bits / power) % 2 == 1 then mask = mask + weights[dotColumn][dotRow] end
+                    end
+                end
+                line = line .. unicode.char(0x2800 + mask)
+            end
+            buffer.drawText(column + (index - 1) * 2, row + cellRow, color, line)
+        end
+    end
 end
 
 return layout
