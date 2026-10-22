@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 2
+-- Reactor Control v1.2 build 3
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "2"
+local build = "3"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -3071,13 +3071,26 @@ end
 
 function ui.button(column, row, width, text, action, color)
     buffer.drawRectangle(column, row, width, 1, ui.panel, 0, " ")
-    ui.text(column + 1, row, width - 2, text, color)
+    text = unicode.sub(text, 1, width - 2)
+    ui.text(column + math.floor((width - unicode.len(text)) / 2), row, width - 2, text, color)
     table.insert(ui.buttons, {column = column, row = row, width = width, action = action})
 end
 
 function ui.value(value, formatter)
     local number, unit = formatter(value or 0)
+    local units = {Rf = "RF", kRf = "kRF", mRf = "mRF", gRf = "GRF", Mb = "mB", kMb = "тыс mB", mMb = "млн mB", gMb = "млрд mB"}
+    unit = units[unit] or unit
     return tostring(number) .. " " .. tostring(unit)
+end
+
+function ui.coolantPercent(current, maximum)
+    current, maximum = tonumber(current), tonumber(maximum)
+    if not current or not maximum or current ~= current or maximum ~= maximum
+        or current == math.huge or current == -math.huge or maximum == math.huge or maximum <= 0 then
+        return "—"
+    end
+    local percent = math.max(0, math.min(100, current / maximum * 100))
+    return (string.format("%.1f%%", percent):gsub("%.0%%$", "%%"))
 end
 
 function ui.cardOrder()
@@ -3179,11 +3192,52 @@ function ui.drawReactorArt(left, top, width, height)
         end
         ui.artTheme = theme
     end
-    for row = top or 6, (top or 6) + (height or 15) - 1 do
-        for column = left or 1, (left or 1) + (width or 100) - 1 do
+    for row = math.max(6, top or 6), math.min(20, (top or 6) + (height or 15) - 1) do
+        for column = math.max(1, left or 1), math.min(100, (left or 1) + (width or 100) - 1) do
             local pixel = ui.art[row - 5][column]
             buffer.set(column, row, pixel[1], pixel[2], "▀")
         end
+    end
+end
+
+function ui.metrics()
+    buffer.drawRectangle(56, 23, 44, 7, theme and 0xE3E9ED or 0x1B252B, 0, " ")
+    ui.text(58, 23, 40, "Метрики", ui.muted)
+    local values = {
+        {"Генерация:", ui.value(rf, formatRF) .. "/t"},
+        {"Жидкость в МЭ:", me_network and ui.value(fluidInMe, formatFluid) or "нет подключения"},
+        {"Порог жидкости:", ui.value(porog, formatFluid)},
+        {"Расход:", tostring(consumeSecond) .. " mB/с"},
+        {"Обновление МЭ:", me_network and ("через " .. (60 - MeSecond) .. " с") or "нет подключения"}
+    }
+    for index, entry in ipairs(values) do
+        ui.text(58, 23 + index, 16, entry[1], index == 5 and ui.muted or ui.foreground)
+        ui.text(75, 23 + index, 23, entry[2], index == 5 and ui.muted or ui.foreground)
+    end
+end
+
+function ui.controls()
+    if ui.editing then
+        ui.button(2, 27, 23, "СТОП ВСЕ", "clickArea1", ui.bad)
+        ui.button(28, 27, 23, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
+    elseif ui.page == "log" then
+        ui.button(2, 21, 23, "СТОП ВСЕ", "clickArea1", ui.bad)
+        ui.button(28, 21, 23, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
+        ui.button(2, 23, 23, "Обновить МЭ", "clickArea5")
+        ui.button(28, 23, 23, "Единицы: " .. status_metric, "clickArea6")
+        ui.button(2, 25, 23, "Порог +2500", "plus")
+        ui.button(28, 25, 23, "Порог -2500", "minus")
+        ui.button(2, 27, 23, "Настройки", "clickArea19")
+        ui.button(28, 27, 23, "Справка", "clickArea20")
+        ui.button(2, 29, 23, "Перезапуск", "clickArea2", ui.muted)
+        ui.button(28, 29, 23, "Выход", "clickArea3", ui.muted)
+    else
+        ui.button(2, 23, 23, "СТОП ВСЕ", "clickArea1", ui.bad)
+        ui.button(28, 23, 23, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
+        ui.button(2, 25, 23, "Настройки", "clickArea19")
+        ui.button(28, 25, 23, "Справка", "clickArea20")
+        ui.button(2, 27, 23, "Перезапуск", "clickArea2", ui.muted)
+        ui.button(28, 27, 23, "Выход", "clickArea3", ui.muted)
     end
 end
 
@@ -3204,33 +3258,31 @@ function ui.render()
     ui.reactorPage = math.min(ui.reactorPage, pages)
     if pages > 1 then ui.button(28, 1, 7, ui.reactorPage .. "/" .. pages, "next") end
     ui.button(36, 1, 20, ui.editing and "Готово" or "Раскладка", "edit")
-    ui.button(58, 1, 20, "Реакторы", "reactors")
-    ui.button(80, 1, 19, "Журнал", "log")
-    local alarm = offFluid and "НЕТ ХЛАДАГЕНТА" or (any_reactor_on and "РАБОТА" or "ОСТАНОВЛЕН")
-    ui.text(2, 3, 36, alarm, offFluid and ui.bad or ui.good)
-    ui.text(40, 3, 26, "Реакторов: " .. reactors)
-    ui.text(69, 3, 30, "Ген: " .. ui.value(rf, formatRF) .. "/t")
-    ui.text(2, 4, 45, "МЭ: " .. (me_network and ui.value(fluidInMe, formatFluid) or "не подключена"))
-    ui.text(49, 4, 50, "Порог: " .. ui.value(porog, formatFluid) .. " | Расход: " .. consumeSecond .. " mB/s")
+    ui.button(58, 1, 20, "Реакторы", "reactors", ui.page == "reactors" and ui.good or ui.muted)
+    ui.button(80, 1, 19, "Журнал", "log", ui.page == "log" and ui.good or ui.muted)
     if ui.page == "log" then
         ui.logOffset = math.min(ui.logOffset or 0, math.max(0, #consoleLines - 14))
-        ui.text(2, 6, 97, "Журнал | Колесо: прокрутка", ui.muted)
-        local row = 7
+        ui.text(2, 4, 97, "ЖУРНАЛ СОБЫТИЙ", ui.muted)
+        local row = 6
         local lastEntry = #consoleLines - ui.logOffset
         for index = math.max(1, lastEntry - 13), lastEntry do
             local entry = consoleLines[index]
             if type(entry) == "table" then
-                ui.text(2, row, 97, entry.text or "", entry.color == colors.msgerror and ui.bad or ui.foreground)
+                ui.text(3, row, 94, entry.text or "", entry.color == colors.msgerror and ui.bad or ui.foreground)
                 row = row + 1
             end
         end
+        ui.text(3, 20, 94, "Колесо мыши — история событий", ui.muted)
     else
         for _, slot in ipairs(ui.cardOrder()) do
             local index = (ui.reactorPage - 1) * 6 + slot
             local card = ui.cards[slot]
             local column, row = card.column, card.row
             local contentWidth = card.width - 2
-            if showArt then ui.drawReactorArt(column, row, card.width, card.height) end
+            if showArt then
+                buffer.drawRectangle(column, row, card.width, card.height, ui.background, 0, " ")
+                ui.drawReactorArt(column, row, card.width, card.height)
+            end
             buffer.drawRectangle(column, row, card.width, card.height, ui.panel, 0, " ", showArt and 0.65 or nil)
             if ui.editing and ui.selected == slot then
                 buffer.drawRectangle(column, row, card.width, 1, theme and 0xB5D7F0 or 0x314C61, 0, " ")
@@ -3239,20 +3291,26 @@ function ui.render()
                 local state = reactor_aborted[index] and "АВАРИЯ" or (reactor_work[index] and "РАБОТА" or "СТОП")
                 local title = ui.cardName(slot)
                 if card.names and card.names[ui.reactorPage] ~= "" then title = "#" .. index .. " " .. title end
-                ui.text(column + 1, row, contentWidth, title, reactor_aborted[index] and ui.bad or (reactor_work[index] and ui.good or ui.muted))
+                local stateColor = reactor_aborted[index] and ui.bad or (reactor_work[index] and ui.good or ui.bad)
+                ui.text(column + 1, row, card.width - 6, title, stateColor)
+                if not ui.editing then
+                    local iconColumn = column + card.width - 4
+                    ui.text(iconColumn, row, 4, reactor_aborted[index] and "[!]" or "[⭘]", stateColor)
+                    if not reactor_aborted[index] then
+                        table.insert(ui.buttons, {column = iconColumn, row = row, width = 4, action = index})
+                    end
+                end
                 ui.text(column + 1, row + 1, contentWidth, (reactor_type[index] or "-") .. " | " .. state, reactor_aborted[index] and ui.bad or ui.muted)
                 ui.text(column + 1, row + 2, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
                 ui.text(column + 1, row + 3, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
                 local coolant = "-"
                 if reactor_type[index] == "Fluid" then
-                    coolant = tostring(reactor_getcoolant[index] or 0) .. "/" .. tostring(reactor_maxcoolant[index] or 0)
+                    coolant = ui.coolantPercent(reactor_getcoolant[index], reactor_maxcoolant[index])
                 end
                 ui.text(column + 1, row + 4, contentWidth, "Буфер: " .. coolant)
-                ui.text(column + 1, row + 5, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/s")
+                ui.text(column + 1, row + 5, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/с")
                 if reactor_aborted[index] then
                     ui.text(column + 1, row + card.height - 1, contentWidth, reason or "Запуск заблокирован", ui.bad)
-                elseif not ui.editing then
-                    ui.button(column + 1, row + card.height - 1, contentWidth, reactor_work[index] and "Отключить" or "Включить", index, reactor_work[index] and ui.good or ui.muted)
                 end
             elseif ui.editing then
                 ui.text(column + 1, row, contentWidth, ui.cardName(slot), ui.muted)
@@ -3263,8 +3321,8 @@ function ui.render()
             end
         end
         if reactors == 0 then ui.text(2, 9, 97, "Реакторы не найдены. Проверьте подключение адаптеров.", ui.muted) end
-        if offFluid then ui.text(2, 21, 97, reason or "Недостаточно жидкости в МЭ. Запуск заблокирован.", ui.bad) end
     end
+    if offFluid then ui.text(2, ui.page == "log" and 3 or 21, 97, reason or "Недостаточно жидкости в МЭ. Запуск заблокирован.", ui.bad) end
     if ui.editing then
         ui.button(1, 22, 12, "Ширина -", "width-")
         ui.button(14, 22, 12, "Ширина +", "width+")
@@ -3278,22 +3336,16 @@ function ui.render()
         ui.button(18, 23, 53, ui.renaming and ((ui.nameDraft or "") .. "|") or ui.cardName(ui.selected), "rename")
         ui.text(73, 23, 26, "#" .. ((ui.reactorPage - 1) * 6 + ui.selected) .. "  " .. selected.width .. "x" .. selected.height, ui.muted)
         ui.text(2, 24, 97, ui.renaming and "Введи название. Enter: принять. Esc: отменить ввод." or "Tab: выбрать и поднять карточку. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
+        if ui.notice then ui.text(55, 30, 44, ui.notice, ui.muted) end
     else
-        ui.text(2, 22, 97, "Flux: " .. (ui.fluxInfo and (ui.value(ui.fluxInfo.energyInput, formatFluxRF) .. "/t > " .. ui.value(ui.fluxInfo.energyOutput, formatFluxRF) .. "/t") or "не подключена"), ui.muted)
-        ui.text(2, 23, 97, "Работа: " .. secondsToHMS(hour * 3600 + minute * 60 + second) .. " | МЭ через: " .. (me_network and (60 - MeSecond) or 0) .. " с | Распад: " .. secondsToHMS(depletionTime), ui.muted)
+        ui.metrics()
+        local latest = consoleLines[#consoleLines]
+        if type(latest) == "table" and latest.color == colors.msgerror then
+            ui.text(55, 30, 44, latest.text or "", ui.bad)
+        end
     end
-    ui.button(1, 25, 19, "СТОП ВСЕ", "clickArea1", ui.bad)
-    ui.button(21, 25, 19, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
-    ui.button(41, 25, 19, "Обновить МЭ", "clickArea5")
-    ui.button(61, 25, 19, "Порог +2500", "plus")
-    ui.button(81, 25, 19, "Порог -2500", "minus")
-    ui.button(1, 27, 19, "Настройки", "clickArea19")
-    ui.button(21, 27, 19, "Справка", "clickArea20")
-    ui.button(41, 27, 19, "Ед.: " .. status_metric, "clickArea6")
-    ui.button(61, 27, 19, "Перезапуск", "clickArea2")
-    ui.button(81, 27, 19, "Выход", "clickArea3")
-    local latest = consoleLines[#consoleLines]
-    ui.text(2, 30, 97, ui.notice or (type(latest) == "table" and (latest.text or "") or ""), ui.muted)
+    ui.controls()
+    ui.text(2, 30, 49, "Время работы: " .. secondsToHMS(hour * 3600 + minute * 60 + second), ui.muted)
     buffer.drawChanges()
 end
 

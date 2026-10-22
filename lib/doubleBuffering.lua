@@ -15,6 +15,7 @@ local mathCeil, mathFloor, mathModf, mathAbs = math.ceil, math.floor, math.modf,
 local tableInsert, tableConcat = table.insert, table.concat
 local colorBlend = color.blend
 local unicodeLen, unicodeSub = unicode.len, unicode.sub
+local unicodeWidth = unicode.wlen or unicode.len
 
 --------------------------------------------------------------------------------
 
@@ -297,6 +298,9 @@ local function drawText(x, y, textColor, data, transparency)
         local charIndex, bufferIndex = 1, bufferWidth * (y - 1) + x
 
         for charIndex = 1, unicodeLen(data) do
+              local symbol = unicodeSub(data, charIndex, charIndex)
+              local width = math.max(1, unicodeWidth(symbol))
+              if width > 1 and (x < drawLimitX1 or x + width - 1 > drawLimitX2) then break end
             if x >= drawLimitX1 and x <= drawLimitX2 then
                 if transparency then
                     newFrameForegrounds[bufferIndex] = colorBlend(newFrameBackgrounds[bufferIndex], textColor, transparency)
@@ -304,10 +308,15 @@ local function drawText(x, y, textColor, data, transparency)
                     newFrameForegrounds[bufferIndex] = textColor
                 end
 
-                newFrameSymbols[bufferIndex] = unicodeSub(data, charIndex, charIndex)
+                  newFrameSymbols[bufferIndex] = symbol
+                  for offset = 1, width - 1 do
+                      newFrameBackgrounds[bufferIndex + offset] = newFrameBackgrounds[bufferIndex]
+                      newFrameForegrounds[bufferIndex + offset] = newFrameForegrounds[bufferIndex]
+                      newFrameSymbols[bufferIndex + offset] = ""
+                  end
             end
 
-            x, bufferIndex = x + 1, bufferIndex + 1
+              x, bufferIndex = x + width, bufferIndex + width
         end
     end
 end

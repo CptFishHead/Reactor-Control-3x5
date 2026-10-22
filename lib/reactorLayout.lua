@@ -1,7 +1,7 @@
 local filesystem = require("filesystem")
 
 local layout = {}
-layout.bounds = {left = 1, top = 6, right = 100, bottom = 20}
+layout.bounds = {left = 1, top = 4, right = 100, bottom = 20}
 layout.minimum = {width = 24, height = 7}
 
 function layout.defaults()
@@ -9,9 +9,9 @@ function layout.defaults()
     for slot = 1, 6 do
         cards[slot] = {
             column = 2 + ((slot - 1) % 3) * 33,
-            row = 6 + math.floor((slot - 1) / 3) * 8,
+            row = 4 + math.floor((slot - 1) / 3) * 9,
             width = 31,
-            height = 7,
+            height = 8,
             layer = slot,
             names = {"", ""}
         }
