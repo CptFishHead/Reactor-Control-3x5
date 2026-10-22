@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 0
+-- Reactor Control v1.2 build 1
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "0"
+local build = "1"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -3080,6 +3080,78 @@ function ui.value(value, formatter)
     return tostring(number) .. " " .. tostring(unit)
 end
 
+function ui.drawReactorArt()
+    if ui.artTheme ~= theme or not ui.art then
+        local palette = theme and {
+            armor = 0xC4D5CB, rim = 0xB3CBBE, face = 0xCED7DC,
+            edge = 0xBBC8CE, shadow = 0xADBFC1, channel = 0xA5C7CE,
+            glow = 0x89B9C3, green = 0xB7CB99
+        } or {
+            armor = 0x183B30, rim = 0x22523C, face = 0x202D34,
+            edge = 0x2B3D45, shadow = 0x172429, channel = 0x28505A,
+            glow = 0x367E8A, green = 0x4B6E34
+        }
+        local pixels = {}
+        for pixelRow = 1, 30 do
+            pixels[pixelRow] = {}
+            for column = 1, 100 do pixels[pixelRow][column] = ui.background end
+        end
+        local function block(column, pixelRow, width, height, color)
+            for vertical = pixelRow, pixelRow + height - 1 do
+                for horizontal = column, column + width - 1 do
+                    if pixels[vertical] and horizontal >= 1 and horizontal <= 100 then
+                        pixels[vertical][horizontal] = color
+                    end
+                end
+            end
+        end
+        for tower = 0, 2 do
+            local column = 5 + tower * 33
+            block(column + 2, 3, 25, 3, palette.armor)
+            block(column + 5, 2, 19, 5, palette.rim)
+            block(column + 9, 1, 11, 6, palette.armor)
+            block(column + 12, 1, 5, 4, palette.shadow)
+            block(column + 3, 4, 5, 1, palette.green)
+            block(column + 21, 4, 5, 1, palette.green)
+            block(column + 6, 7, 17, 18, palette.shadow)
+            block(column + 7, 7, 15, 18, palette.edge)
+            block(column + 9, 7, 11, 18, palette.face)
+            block(column + 12, 7, 5, 18, palette.shadow)
+            block(column + 13, 7, 3, 18, palette.channel)
+            for segment = 0, 5 do
+                local pixelRow = 7 + segment * 3
+                block(column + 13, pixelRow, 1, 2, palette.glow)
+                block(column + 15, pixelRow, 1, 2, palette.glow)
+                block(column + 14, pixelRow + 2, 1, 1, palette.glow)
+            end
+            for rib = 0, 3 do
+                block(column + 8, 8 + rib * 4, 1, 2, palette.channel)
+                block(column + 20, 8 + rib * 4, 1, 2, palette.channel)
+            end
+            block(column + 2, 25, 25, 6, palette.armor)
+            block(column + 6, 25, 17, 2, palette.rim)
+            block(column + 11, 26, 7, 4, palette.shadow)
+            for indicator = 0, 2 do block(column + 12 + indicator * 2, 27, 1, 2, palette.green) end
+            block(column + 3, 26, 5, 3, palette.shadow)
+            block(column + 21, 26, 5, 3, palette.shadow)
+        end
+        ui.art = {}
+        for row = 1, 15 do
+            ui.art[row] = {}
+            for column = 1, 100 do
+                ui.art[row][column] = {pixels[row * 2][column], pixels[row * 2 - 1][column]}
+            end
+        end
+        ui.artTheme = theme
+    end
+    for row = 1, 15 do
+        for column = 1, 100 do
+            local pixel = ui.art[row][column]
+            buffer.set(column, row + 5, pixel[1], pixel[2], "▀")
+        end
+    end
+end
+
 function ui.render()
     if ui.modal then return end
     ui.background = theme and 0xF1F3F5 or 0x15191D
@@ -3090,6 +3162,8 @@ function ui.render()
     ui.bad = theme and 0xB82030 or 0xFF737D
     ui.buttons = {}
     buffer.clear(ui.background)
+    local showArt = ui.page == "reactors" and not ui.editing
+    if showArt then ui.drawReactorArt() end
     ui.text(2, 1, 26, "REACTOR CONTROL " .. progVer)
     local pages = math.max(1, math.ceil(math.min(reactors, 12) / 6))
     ui.reactorPage = math.min(ui.reactorPage, pages)
@@ -3121,7 +3195,7 @@ function ui.render()
             local card = ui.cards[slot]
             local column, row = card.column, card.row
             local contentWidth = card.width - 2
-            buffer.drawRectangle(column, row, card.width, card.height, ui.panel, 0, " ")
+            buffer.drawRectangle(column, row, card.width, card.height, ui.panel, 0, " ", showArt and 0.65 or nil)
             if ui.editing and ui.selected == slot then
                 buffer.drawRectangle(column, row, card.width, 1, theme and 0xB5D7F0 or 0x314C61, 0, " ")
             end
