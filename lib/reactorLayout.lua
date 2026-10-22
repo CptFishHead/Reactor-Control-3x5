@@ -3,15 +3,25 @@ local filesystem = require("filesystem")
 local layout = {}
 layout.bounds = {left = 1, top = 4, right = 100, bottom = 20}
 layout.minimum = {width = 24, height = 7}
+layout.screen = {width = 100, height = 30}
+
+function layout.setScreen(width, height)
+    if not ((width == 100 and height == 30) or (width == 80 and height == 25)) then
+        return false, "Допустимые разрешения: 100x30 и 80x25"
+    end
+    layout.screen = {width = width, height = height}
+    layout.bounds = {left = 1, top = width == 80 and 3 or 4, right = width, bottom = width == 80 and 17 or 20}
+    return true
+end
 
 function layout.defaults()
     local cards = {}
     for slot = 1, 6 do
         cards[slot] = {
-            column = 2 + ((slot - 1) % 3) * 33,
-            row = 4 + math.floor((slot - 1) / 3) * 9,
-            width = 31,
-            height = 8,
+            column = 2 + ((slot - 1) % 3) * (layout.screen.width == 80 and 26 or 33),
+            row = layout.bounds.top + math.floor((slot - 1) / 3) * (layout.screen.width == 80 and 8 or 9),
+            width = layout.screen.width == 80 and 25 or 31,
+            height = layout.screen.width == 80 and 7 or 8,
             layer = slot, fontScale = 1,
             names = {"", ""}
         }
@@ -87,14 +97,20 @@ function layout.read(path)
         file = io.open(path .. ".bak", "r")
         recovered = file ~= nil
     end
-    if not file then return layout.defaults() end
+    if not file then layout.setScreen(100, 30); return layout.defaults() end
     local cards = {}
     local format = file:read("*l")
-    if format == "RC-LAYOUT-1" or format == "RC-LAYOUT-2" or format == "RC-LAYOUT-3" then
+    layout.setScreen(100, 30)
+    local screenValid = true
+    if format == "RC-LAYOUT-4" then
+        local width, height = (file:read("*l") or ""):match("^(%d+) (%d+)$")
+        screenValid = layout.setScreen(tonumber(width), tonumber(height))
+    end
+    if format == "RC-LAYOUT-1" or format == "RC-LAYOUT-2" or format == "RC-LAYOUT-3" or format == "RC-LAYOUT-4" then
         for slot = 1, 6 do
             local line = file:read("*l") or ""
             local column, row, width, height, layer, fontScale
-            if format == "RC-LAYOUT-3" then
+            if format == "RC-LAYOUT-3" or format == "RC-LAYOUT-4" then
                 column, row, width, height, layer, fontScale = line:match("^(%d+) (%d+) (%d+) (%d+) (%d+) (%d+)$")
             elseif format == "RC-LAYOUT-2" then
                 column, row, width, height, layer = line:match("^(%d+) (%d+) (%d+) (%d+) (%d+)$")
@@ -106,13 +122,15 @@ function layout.read(path)
             cards[slot] = {
                 column = tonumber(column), row = tonumber(row), width = tonumber(width), height = tonumber(height),
                 layer = format ~= "RC-LAYOUT-1" and tonumber(layer) or slot, names = names,
-                fontScale = format == "RC-LAYOUT-3" and tonumber(fontScale) or 1
+                fontScale = (format == "RC-LAYOUT-3" or format == "RC-LAYOUT-4") and tonumber(fontScale) or 1
             }
         end
     end
     file:close()
     local valid, reason = layout.validate(cards)
-    if valid then return cards, recovered and "Раскладка восстановлена из резервной копии" or nil end
+    if valid and screenValid then return cards, recovered and "Раскладка восстановлена из резервной копии" or nil end
+    if not screenValid then reason = "Недопустимое разрешение" end
+    layout.setScreen(100, 30)
     return layout.defaults(), "Раскладка сброшена: " .. reason
 end
 
@@ -124,7 +142,7 @@ function layout.write(path, cards)
     local file, errorMessage = io.open(temporary, "w")
     if not file then return false, tostring(errorMessage or "Не удалось открыть файл раскладки") end
     local written, writeError = pcall(function()
-        assert(file:write("RC-LAYOUT-3\n"))
+        assert(file:write("RC-LAYOUT-4\n" .. layout.screen.width .. " " .. layout.screen.height .. "\n"))
         for slot, card in ipairs(cards) do
             assert(file:write(string.format("%d %d %d %d %d %d\n", card.column, card.row, card.width, card.height, card.layer or slot, card.fontScale or 1)))
             assert(file:write((card.names and card.names[1] or "") .. "\n" .. (card.names and card.names[2] or "") .. "\n"))

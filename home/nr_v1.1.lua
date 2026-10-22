@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 6
+-- Reactor Control v1.2 build 7
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "6"
+local build = "7"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -2094,7 +2094,9 @@ end
 -- -------------------------------{INFO MENU}--------------------------------------
 local function drawSettingsMenu()
     ui.modal = true
+    buffer.setResolution(100, 30)
     drawSettingsMenuDialog()
+    buffer.setResolution(ui.width, ui.height)
     ui.modal = false
     ui.render()
 end
@@ -2342,7 +2344,9 @@ end
 -- -----------------------------------------------------
 local function drawInfoMenu()
     ui.modal = true
+    buffer.setResolution(100, 30)
     drawInfoMenuDialog()
+    buffer.setResolution(ui.width, ui.height)
     ui.modal = false
     ui.render()
 end
@@ -2497,7 +2501,9 @@ end
 -- ----------------------------------------------------------------------------------------------------
 local function checkVer()
     ui.modal = true
+    buffer.setResolution(100, 30)
     checkVerDialog()
+    buffer.setResolution(ui.width, ui.height)
     ui.modal = false
     ui.render()
 end
@@ -3192,9 +3198,10 @@ function ui.drawReactorArt(left, top, width, height)
         end
         ui.artTheme = theme
     end
-    for row = math.max(6, top or 6), math.min(20, (top or 6) + (height or 15) - 1) do
-        for column = math.max(1, left or 1), math.min(100, (left or 1) + (width or 100) - 1) do
-            local pixel = ui.art[row - 5][column]
+    local artTop = ui.width == 80 and 3 or 6
+    for row = math.max(artTop, top or artTop), math.min(artTop + 14, (top or artTop) + (height or 15) - 1) do
+        for column = math.max(1, left or 1), math.min(ui.width, (left or 1) + (width or ui.width) - 1) do
+            local pixel = ui.art[row - artTop + 1][math.floor((column - 1) * 100 / ui.width) + 1]
             buffer.set(column, row, pixel[1], pixel[2], "▀")
         end
     end
@@ -3218,6 +3225,25 @@ end
 
 function ui.controls()
     if ui.editing then return end
+    if ui.width == 80 then
+        local rows = ui.page == "log" and {
+            {"СТОП ВСЕ", "clickArea1", "ЗАПУСК ВСЕ", "clickArea4"},
+            {"Обновить МЭ", "clickArea5", "Ед.: " .. status_metric, "clickArea6"},
+            {"Порог +2500", "plus", "Порог -2500", "minus"},
+            {"Настройки", "clickArea19", "Справка", "clickArea20"},
+            {"Перезапуск", "clickArea2", "Выход", "clickArea3"}
+        } or {
+            {"СТОП ВСЕ", "clickArea1", "ЗАПУСК ВСЕ", "clickArea4"},
+            {"Настройки", "clickArea19", "Справка", "clickArea20"},
+            {"Перезапуск", "clickArea2", "Выход", "clickArea3"}
+        }
+        local top = ui.page == "log" and 15 or 19
+        for index, entry in ipairs(rows) do
+            ui.button(2, top + (index - 1) * 2, 18, entry[1], entry[2], index == 1 and ui.bad or nil)
+            ui.button(22, top + (index - 1) * 2, 18, entry[3], entry[4], index == 1 and ui.good or nil)
+        end
+        return
+    end
     if ui.page == "log" then
         ui.button(2, 21, 23, "СТОП ВСЕ", "clickArea1", ui.bad)
         ui.button(28, 21, 23, "ЗАПУСК ВСЕ", "clickArea4", ui.good)
@@ -3257,6 +3283,48 @@ function ui.layoutGrid()
     end
 end
 
+function ui.compactMetrics()
+    buffer.drawRectangle(44, 19, 36, 6, theme and 0xE3E9ED or 0x1B252B, 0, " ")
+    ui.text(45, 19, 34, "Метрики", ui.muted)
+    local values = {
+        {"Генерация:", ui.value(rf, formatRF) .. "/t"},
+        {"Жидкость МЭ:", me_network and ui.value(fluidInMe, formatFluid) or "нет подключения"},
+        {"Порог:", ui.value(porog, formatFluid)},
+        {"Расход:", tostring(consumeSecond) .. " mB/с"},
+        {"Обновление:", me_network and ("через " .. (60 - MeSecond) .. " с") or "нет подключения"}
+    }
+    for index, entry in ipairs(values) do
+        ui.text(45, 19 + index, 14, entry[1], ui.muted)
+        ui.text(60, 19 + index, 19, entry[2])
+    end
+end
+
+function ui.compactEditor()
+    local selected = ui.cards[ui.selected]
+    ui.text(2, 18, 24, "РАЗМЕР И ПОЗИЦИЯ", ui.muted)
+    ui.text(28, 18, 24, "НАЗВАНИЕ / ЭКРАН", ui.muted)
+    ui.text(54, 18, 25, "РАСКЛАДКА", ui.muted)
+    ui.button(2, 19, 11, "Ширина -", "width-")
+    ui.button(15, 19, 11, "Ширина +", "width+")
+    ui.button(2, 21, 11, "Высота -", "height-")
+    ui.button(15, 21, 11, "Высота +", "height+")
+    local name = ui.cardName(ui.selected)
+    if ui.renaming then
+        local draft = ui.nameDraft or ""
+        name = unicode.sub(draft, math.max(1, unicode.len(draft) - 20), unicode.len(draft)) .. "|"
+    end
+    ui.button(28, 19, 24, name, "rename")
+    ui.button(28, 21, 24, "Переименовать / F2", "rename")
+    ui.button(28, 23, 11, "100x30", "screen100")
+    ui.button(41, 23, 11, "80x25", "screen80", ui.good)
+    ui.button(54, 19, 25, "Стандартная сетка", "reset")
+    ui.button(54, 21, 25, "Сохранить", "save", ui.good)
+    ui.button(54, 23, 25, "Отмена", "cancel")
+    ui.text(2, 23, 24, "X:" .. selected.column .. " Y:" .. selected.row .. " " .. selected.width .. "x" .. selected.height, ui.muted)
+    ui.text(2, 24, 77, ui.renaming and "Enter: принять имя. Esc: отменить ввод." or "Tab: выбор. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
+    if ui.notice then ui.text(35, 25, 44, ui.notice, ui.muted) end
+end
+
 function ui.render()
     if ui.modal then return end
     ui.background = theme and 0xF1F3F5 or 0x15191D
@@ -3270,26 +3338,27 @@ function ui.render()
     if ui.editing then ui.layoutGrid() end
     local showArt = ui.page == "reactors" and not ui.editing
     if showArt then ui.drawReactorArt() end
-    ui.text(2, 1, 26, "REACTOR CONTROL " .. progVer)
+    ui.text(2, 1, ui.width == 80 and 22 or 26, "REACTOR CONTROL " .. progVer)
     local pages = math.max(1, math.ceil(math.min(reactors, 12) / 6))
     ui.reactorPage = math.min(ui.reactorPage, pages)
-    if pages > 1 then ui.button(28, 1, 7, ui.reactorPage .. "/" .. pages, "next") end
-    ui.button(36, 1, 20, ui.editing and "Готово" or "Раскладка", "edit")
-    ui.button(58, 1, 20, "Реакторы", "reactors", ui.page == "reactors" and ui.good or ui.muted)
-    ui.button(80, 1, 19, "Журнал", "log", ui.page == "log" and ui.good or ui.muted)
+    if pages > 1 then ui.button(ui.width == 80 and 24 or 28, 1, ui.width == 80 and 5 or 7, ui.reactorPage .. "/" .. pages, "next") end
+    ui.button(ui.width == 80 and 30 or 36, 1, ui.width == 80 and 15 or 20, ui.editing and "Готово" or "Раскладка", "edit")
+    ui.button(ui.width == 80 and 47 or 58, 1, ui.width == 80 and 15 or 20, "Реакторы", "reactors", ui.page == "reactors" and ui.good or ui.muted)
+    ui.button(ui.width == 80 and 64 or 80, 1, ui.width == 80 and 15 or 19, "Журнал", "log", ui.page == "log" and ui.good or ui.muted)
     if ui.page == "log" then
-        ui.logOffset = math.min(ui.logOffset or 0, math.max(0, #consoleLines - 14))
-        ui.text(2, 4, 97, "ЖУРНАЛ СОБЫТИЙ", ui.muted)
-        local row = 6
+        local visibleLines = ui.width == 80 and 8 or 14
+        ui.logOffset = math.min(ui.logOffset or 0, math.max(0, #consoleLines - visibleLines))
+        ui.text(2, ui.width == 80 and 3 or 4, ui.width - 3, "ЖУРНАЛ СОБЫТИЙ", ui.muted)
+        local row = ui.width == 80 and 5 or 6
         local lastEntry = #consoleLines - ui.logOffset
-        for index = math.max(1, lastEntry - 13), lastEntry do
+        for index = math.max(1, lastEntry - visibleLines + 1), lastEntry do
             local entry = consoleLines[index]
             if type(entry) == "table" then
-                ui.text(3, row, 94, entry.text or "", entry.color == colors.msgerror and ui.bad or ui.foreground)
+                ui.text(3, row, ui.width - 6, entry.text or "", entry.color == colors.msgerror and ui.bad or ui.foreground)
                 row = row + 1
             end
         end
-        ui.text(3, 20, 94, "Колесо мыши — история событий", ui.muted)
+        ui.text(3, ui.width == 80 and 13 or 20, ui.width - 6, "Колесо мыши — история событий", ui.muted)
     else
         for _, slot in ipairs(ui.cardOrder()) do
             local index = (ui.reactorPage - 1) * 6 + slot
@@ -3345,13 +3414,16 @@ function ui.render()
                 ui.text(column + card.width - 1, row + card.height - 1, 1, "+", ui.good)
             end
         end
-        if reactors == 0 then ui.text(2, 9, 97, "Реакторы не найдены. Проверьте подключение адаптеров.", ui.muted) end
+        if reactors == 0 then ui.text(2, 9, ui.width - 3, "Реакторы не найдены. Проверьте подключение адаптеров.", ui.muted) end
     end
-    if offFluid then ui.text(2, ui.page == "log" and 3 or 21, 97, reason or "Недостаточно жидкости в МЭ. Запуск заблокирован.", ui.bad) end
+    if offFluid then ui.text(2, ui.width == 80 and (ui.editing and 2 or (ui.page == "log" and 14 or 18)) or (ui.page == "log" and 3 or 21), ui.width - 3, reason or "Недостаточно жидкости в МЭ. Запуск заблокирован.", ui.bad) end
     if ui.editing then
+        if ui.width == 80 then
+            ui.compactEditor()
+        else
         local selected = ui.cards[ui.selected]
         ui.text(2, 22, 30, "РАЗМЕР И ПОЗИЦИЯ", ui.muted)
-        ui.text(36, 22, 32, "НАЗВАНИЕ  #" .. ((ui.reactorPage - 1) * 6 + ui.selected), ui.muted)
+        ui.text(36, 22, 32, "НАЗВАНИЕ / ЭКРАН", ui.muted)
         ui.text(73, 22, 26, "РАСКЛАДКА", ui.muted)
         ui.button(2, 23, 14, "Ширина -", "width-")
         ui.button(18, 23, 14, "Ширина +", "width+")
@@ -3368,19 +3440,20 @@ function ui.render()
         ui.button(73, 25, 26, "Сохранить", "save", ui.good)
         ui.button(73, 27, 26, "Отмена", "cancel")
         ui.text(2, 27, 30, "X:" .. selected.column .. "  Y:" .. selected.row .. "  " .. selected.width .. "x" .. selected.height, ui.muted)
-        ui.button(36, 27, 14, "Шрифт ×1", "font1", (selected.fontScale or 1) == 1 and ui.good or ui.muted)
-        ui.button(54, 27, 14, "Шрифт ×2", "font2", selected.fontScale == 2 and ui.good or ui.muted)
+        ui.button(36, 27, 14, "100x30", "screen100", ui.good)
+        ui.button(54, 27, 14, "80x25", "screen80")
         ui.text(2, 29, 97, ui.renaming and "Введи название с клавиатуры. После ввода сохрани раскладку." or "Тяни карточку или угол +. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
         if ui.notice then ui.text(55, 30, 44, ui.notice, ui.muted) end
+        end
     else
-        ui.metrics()
+        if ui.width == 80 then ui.compactMetrics() else ui.metrics() end
         local latest = consoleLines[#consoleLines]
         if type(latest) == "table" and latest.color == colors.msgerror then
-            ui.text(55, 30, 44, latest.text or "", ui.bad)
+            ui.text(ui.width == 80 and 35 or 55, ui.height, 44, latest.text or "", ui.bad)
         end
     end
     ui.controls()
-    ui.text(2, 30, 49, "Время работы: " .. secondsToHMS(hour * 3600 + minute * 60 + second), ui.muted)
+    ui.text(2, ui.height, ui.width == 80 and 32 or 49, "Время работы: " .. secondsToHMS(hour * 3600 + minute * 60 + second), ui.muted)
     buffer.drawChanges()
 end
 
@@ -3413,11 +3486,15 @@ function ui.finishEdit(save)
         end
         ui.notice = "Раскладка сохранена"
     else
+        layout.setScreen(ui.snapshotScreen.width, ui.snapshotScreen.height)
+        ui.width, ui.height = layout.screen.width, layout.screen.height
+        buffer.setResolution(ui.width, ui.height)
         ui.cards = layout.clone(ui.snapshot)
         ui.notice = "Изменения раскладки отменены"
     end
     ui.editing = false
     ui.snapshot = nil
+    ui.snapshotScreen = nil
     ui.render()
 end
 
@@ -3429,6 +3506,7 @@ function ui.editAction(action)
         ui.page = "reactors"
         ui.selected = 1
         ui.snapshot = layout.clone(ui.cards)
+        ui.snapshotScreen = {width = ui.width, height = ui.height}
         ui.notice = "Выбери карточку. Перетаскивай её или угол +; размер можно менять кнопками."
     elseif not ui.editing then
         return false
@@ -3447,6 +3525,19 @@ function ui.editAction(action)
         for slot, card in ipairs(ui.cards) do card.names = previous[slot].names end
         ui.dragging = nil
         ui.notice = "Стандартная раскладка. Нажми Сохранить."
+    elseif action == "screen100" or action == "screen80" then
+        local width, height = action == "screen80" and 80 or 100, action == "screen80" and 25 or 30
+        if ui.width ~= width then
+            local previous = layout.clone(ui.cards)
+            buffer.setResolution(width, height)
+            layout.setScreen(width, height)
+            ui.width, ui.height = width, height
+            ui.cards = layout.defaults()
+            for slot, card in ipairs(ui.cards) do card.names = previous[slot].names end
+            ui.dragging = nil
+            ui.logOffset = 0
+        end
+        ui.notice = width .. "x" .. height .. ": новая сетка. Сохрани или отмени."
     elseif action == "font1" or action == "font2" then
         ui.dragging = nil
         local card = ui.cards[ui.selected]
@@ -3579,12 +3670,14 @@ end
 
 function ui.scroll(direction)
     if ui.page == "log" then
-        ui.logOffset = math.max(0, math.min(math.max(0, #consoleLines - 14), (ui.logOffset or 0) + direction))
+        ui.logOffset = math.max(0, math.min(math.max(0, #consoleLines - (ui.width == 80 and 8 or 14)), (ui.logOffset or 0) + direction))
         ui.render()
     end
 end
 
 ui.cards, ui.notice = layout.read(ui.layoutPath)
+ui.width, ui.height = layout.screen.width, layout.screen.height
+buffer.setResolution(ui.width, ui.height)
 
 local function mainLoop()
     ui.modal = false
