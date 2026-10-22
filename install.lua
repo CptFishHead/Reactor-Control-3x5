@@ -4,7 +4,7 @@ local computer = require("computer")
 local component = require("component")
 
 local repository = "https://raw.githubusercontent.com/CptFishHead/Reactor-Control-3x5/main/"
-local staging = "/tmp/reactor-install"
+local staging = "/home/.reactor-install"
 local files = {
     {source = "lib/advancedLua.lua", target = "/lib/advancedLua.lua"},
     {source = "lib/color.lua", target = "/lib/color.lua"},
@@ -46,7 +46,7 @@ local function install()
         file.staged = staging .. "/" .. index
         print(string.format("[%d/%d] %s", index, #files, file.target))
         assert(shell.execute("wget -fq " .. repository .. file.source .. " " .. file.staged), "Ошибка загрузки: " .. file.source)
-        assert(filesystem.exists(file.staged) and filesystem.size(file.staged) > 0, "Получен пустой файл: " .. file.source)
+        assert(filesystem.exists(file.staged) and filesystem.size(file.staged) > 0, "Файл не записан: " .. file.source .. ". Проверь свободное место на диске.")
         if file.source:match("%.lua$") then
             local chunk, errorMessage = loadfile(file.staged)
             assert(chunk, "Повреждён Lua-файл: " .. file.source .. ": " .. tostring(errorMessage))
@@ -93,6 +93,8 @@ local function install()
         end
         error((restored and "Прежние файлы восстановлены: " or ("Нужно восстановление из " .. backupFolder .. ": ")) .. tostring(failure))
     end
+    for _, file in ipairs(files) do filesystem.remove(file.staged) end
+    filesystem.remove(staging)
     print("Установлено. Конфигурация и раскладка сохранены.")
     print("Резервная копия заменённых файлов: " .. backupFolder)
     print("После перезапуска откроется программа. При первом запуске добавь свой ник в настройках.")

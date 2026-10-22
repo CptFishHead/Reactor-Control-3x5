@@ -13,13 +13,15 @@
 ## Одна команда в игре
 
 ```sh
-wget -fq https://raw.githubusercontent.com/CptFishHead/Reactor-Control-3x5/main/install.lua /tmp/reactor-setup.lua && /tmp/reactor-setup.lua
+wget -fq https://raw.githubusercontent.com/CptFishHead/Reactor-Control-3x5/main/install.lua /home/reactor-setup.lua && /home/reactor-setup.lua
 ```
 
 Не нужно сначала ставить оригинальную программу или вручную загружать файлы на GitHub.
 Установщик загружает все нужные библиотеки и новую программу, проверяет Lua-файлы,
 делает резервные копии заменяемых файлов и перезагружает компьютер.
 Загрузка и проверка всех файлов выполняются до замены программы.
+Файлы загружаются на жёсткий диск в `/home/.reactor-install`, а не в ограниченный
+RAM-диск `/tmp`. После успешной установки промежуточные файлы удаляются.
 При ошибке установки запускается восстановление прежних файлов; если оно не удалось,
 установщик укажет каталог резервной копии.
 

@@ -9,7 +9,7 @@
 В терминале OpenOS с интернет-картой:
 
 ```sh
-wget -fq https://raw.githubusercontent.com/CptFishHead/Reactor-Control-3x5/main/install.lua /tmp/reactor-setup.lua && /tmp/reactor-setup.lua
+wget -fq https://raw.githubusercontent.com/CptFishHead/Reactor-Control-3x5/main/install.lua /home/reactor-setup.lua && /home/reactor-setup.lua
 ```
 
 Сначала остановите реакторы и выйдите из старой программы, если она уже установлена.
