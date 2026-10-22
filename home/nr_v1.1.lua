@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 7
+-- Reactor Control v1.2 build 8
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "7"
+local build = "8"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -3382,7 +3382,7 @@ function ui.render()
                 buffer.drawRectangle(column, row, card.width, scale, theme and 0xB5D7F0 or 0x314C61, 0, " ")
             end
             if index <= reactors then
-                local state = reactor_aborted[index] and "АВАРИЯ" or (reactor_work[index] and "РАБОТА" or "СТОП")
+                local modeSymbol = reactor_type[index] == "Fluid" and "💧" or (reactor_type[index] == "Air" and "❋" or "?")
                 local title = ui.cardName(slot)
                 if card.names and card.names[ui.reactorPage] ~= "" then title = "#" .. index .. " " .. title end
                 local stateColor = reactor_aborted[index] and ui.bad or (reactor_work[index] and ui.good or ui.bad)
@@ -3394,7 +3394,8 @@ function ui.render()
                         table.insert(ui.buttons, {column = iconColumn, row = row, width = 4, action = index})
                     end
                 end
-                cardText(1, contentWidth, (reactor_type[index] or "-") .. " | " .. state, reactor_aborted[index] and ui.bad or ui.muted)
+                if reactor_aborted[index] then cardText(1, contentWidth, "   АВАРИЯ", ui.bad) end
+                ui.text(column + 1, row + scale, 2, modeSymbol, reactor_aborted[index] and ui.bad or ui.muted)
                 cardText(2, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
                 cardText(3, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
                 local coolant = "-"
