@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 4
+-- Reactor Control v1.2 build 5
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "4"
+local build = "5"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -3341,19 +3341,27 @@ function ui.render()
     end
     if offFluid then ui.text(2, ui.page == "log" and 3 or 21, 97, reason or "Недостаточно жидкости в МЭ. Запуск заблокирован.", ui.bad) end
     if ui.editing then
-        ui.button(1, 22, 12, "Ширина -", "width-")
-        ui.button(14, 22, 12, "Ширина +", "width+")
-        ui.button(27, 22, 12, "Высота -", "height-")
-        ui.button(40, 22, 12, "Высота +", "height+")
-        ui.button(53, 22, 14, "Сброс", "reset")
-        ui.button(68, 22, 15, "Сохранить", "save")
-        ui.button(84, 22, 16, "Отмена", "cancel")
         local selected = ui.cards[ui.selected]
-        ui.button(1, 23, 16, "Имя / F2", "rename")
-        ui.button(18, 23, 53, ui.renaming and ((ui.nameDraft or "") .. "|") or ui.cardName(ui.selected), "rename")
-        ui.text(73, 23, 26, "#" .. ((ui.reactorPage - 1) * 6 + ui.selected) .. "  " .. selected.width .. "x" .. selected.height, ui.muted)
-        ui.text(2, 24, 97, ui.renaming and "Введи название. Enter: принять. Esc: отменить ввод." or "Tab: выбрать и поднять карточку. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
-        ui.text(2, 26, 97, "Позиция: X=" .. selected.column .. "  Y=" .. selected.row .. "    Размер: " .. selected.width .. "x" .. selected.height .. "    Сетка: 1 символ", ui.muted)
+        ui.text(2, 22, 30, "РАЗМЕР И ПОЗИЦИЯ", ui.muted)
+        ui.text(36, 22, 32, "НАЗВАНИЕ  #" .. ((ui.reactorPage - 1) * 6 + ui.selected), ui.muted)
+        ui.text(73, 22, 26, "РАСКЛАДКА", ui.muted)
+        ui.button(2, 23, 14, "Ширина -", "width-")
+        ui.button(18, 23, 14, "Ширина +", "width+")
+        ui.button(2, 25, 14, "Высота -", "height-")
+        ui.button(18, 25, 14, "Высота +", "height+")
+        local name = ui.cardName(ui.selected)
+        if ui.renaming then
+            local draft = ui.nameDraft or ""
+            name = unicode.sub(draft, math.max(1, unicode.len(draft) - 28), unicode.len(draft)) .. "|"
+        end
+        ui.button(36, 23, 32, name, "rename")
+        ui.button(36, 25, 32, "Переименовать / F2", "rename")
+        ui.button(73, 23, 26, "Стандартная сетка", "reset")
+        ui.button(73, 25, 26, "Сохранить", "save", ui.good)
+        ui.button(73, 27, 26, "Отмена", "cancel")
+        ui.text(2, 27, 30, "X:" .. selected.column .. "  Y:" .. selected.row .. "  " .. selected.width .. "x" .. selected.height, ui.muted)
+        ui.text(36, 27, 32, ui.renaming and "Enter: принять | Esc: отмена" or "Tab: следующая карточка", ui.muted)
+        ui.text(2, 29, 97, ui.renaming and "Введи название с клавиатуры. После ввода сохрани раскладку." or "Тяни карточку или угол +. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
         if ui.notice then ui.text(55, 30, 44, ui.notice, ui.muted) end
     else
         ui.metrics()
