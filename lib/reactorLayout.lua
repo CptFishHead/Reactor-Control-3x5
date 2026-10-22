@@ -11,7 +11,9 @@ function layout.defaults()
             column = 2 + ((slot - 1) % 3) * 33,
             row = 6 + math.floor((slot - 1) / 3) * 8,
             width = 31,
-            height = 7
+            height = 7,
+            layer = slot,
+            names = {"", ""}
         }
     end
     return cards
@@ -20,7 +22,10 @@ end
 function layout.clone(cards)
     local copy = {}
     for slot, card in ipairs(cards) do
-        copy[slot] = {column = card.column, row = card.row, width = card.width, height = card.height}
+        copy[slot] = {
+            column = card.column, row = card.row, width = card.width, height = card.height,
+            layer = card.layer or slot, names = {card.names and card.names[1] or "", card.names and card.names[2] or ""}
+        }
     end
     return copy
 end
@@ -47,8 +52,18 @@ function layout.validate(cards)
             or card.column + card.width - 1 > layout.bounds.right or card.row + card.height - 1 > layout.bounds.bottom then
             return false, "Карточка выходит за рабочую область"
         end
-        for previous = 1, slot - 1 do
-            if layout.overlap(card, cards[previous]) then return false, "Карточки пересекаются" end
+        local layer = card.layer or slot
+        if type(layer) ~= "number" or layer < 1 or layer > 6 or layer ~= math.floor(layer) then
+            return false, "Повреждён порядок карточек"
+        end
+        if card.names ~= nil then
+            if type(card.names) ~= "table" then return false, "Повреждены названия карточек" end
+            for page = 1, 2 do
+                local name = card.names[page]
+                if type(name) ~= "string" or #name > 128 or name:find("[%z\1-\31\127]") then
+                    return false, "Недопустимое название карточки"
+                end
+            end
         end
     end
     return true
@@ -71,11 +86,22 @@ function layout.read(path)
     end
     if not file then return layout.defaults() end
     local cards = {}
-    if file:read("*l") == "RC-LAYOUT-1" then
+    local format = file:read("*l")
+    if format == "RC-LAYOUT-1" or format == "RC-LAYOUT-2" then
         for slot = 1, 6 do
             local line = file:read("*l") or ""
-            local column, row, width, height = line:match("^(%d+) (%d+) (%d+) (%d+)$")
-            cards[slot] = {column = tonumber(column), row = tonumber(row), width = tonumber(width), height = tonumber(height)}
+            local column, row, width, height, layer
+            if format == "RC-LAYOUT-2" then
+                column, row, width, height, layer = line:match("^(%d+) (%d+) (%d+) (%d+) (%d+)$")
+            else
+                column, row, width, height = line:match("^(%d+) (%d+) (%d+) (%d+)$")
+            end
+            local names = {"", ""}
+            if format == "RC-LAYOUT-2" then names = {file:read("*l"), file:read("*l")} end
+            cards[slot] = {
+                column = tonumber(column), row = tonumber(row), width = tonumber(width), height = tonumber(height),
+                layer = format == "RC-LAYOUT-2" and tonumber(layer) or slot, names = names
+            }
         end
     end
     file:close()
@@ -92,9 +118,10 @@ function layout.write(path, cards)
     local file, errorMessage = io.open(temporary, "w")
     if not file then return false, tostring(errorMessage or "Не удалось открыть файл раскладки") end
     local written, writeError = pcall(function()
-        assert(file:write("RC-LAYOUT-1\n"))
-        for _, card in ipairs(cards) do
-            assert(file:write(string.format("%d %d %d %d\n", card.column, card.row, card.width, card.height)))
+        assert(file:write("RC-LAYOUT-2\n"))
+        for slot, card in ipairs(cards) do
+            assert(file:write(string.format("%d %d %d %d %d\n", card.column, card.row, card.width, card.height, card.layer or slot)))
+            assert(file:write((card.names and card.names[1] or "") .. "\n" .. (card.names and card.names[2] or "") .. "\n"))
         end
         assert(file:flush())
         local closed, closeError = file:close()

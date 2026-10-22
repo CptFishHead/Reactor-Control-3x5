@@ -1,4 +1,4 @@
--- Reactor Control v1.2 build 1
+-- Reactor Control v1.2 build 2
 
 -- ----------------------------------------------------------------------------------------------------
 local computer = require("computer")
@@ -21,7 +21,7 @@ buffer.clear(0x000000)
 local lastTime = computer.uptime()
 local exit = false
 local version = "1.2"
-local build = "1"
+local build = "2"
 local progVer = version .. "." .. build
 
 local imagesFolder = "/home/images/" -- Путь к изображению
@@ -3080,7 +3080,42 @@ function ui.value(value, formatter)
     return tostring(number) .. " " .. tostring(unit)
 end
 
-function ui.drawReactorArt()
+function ui.cardOrder()
+    local order = {1, 2, 3, 4, 5, 6}
+    table.sort(order, function(first, second)
+        local firstLayer = ui.cards[first].layer or first
+        local secondLayer = ui.cards[second].layer or second
+        return firstLayer == secondLayer and first < second or firstLayer < secondLayer
+    end)
+    return order
+end
+
+function ui.bringFront(slot)
+    local rank = 0
+    for _, current in ipairs(ui.cardOrder()) do
+        if current ~= slot then rank = rank + 1; ui.cards[current].layer = rank end
+    end
+    ui.cards[slot].layer = 6
+end
+
+function ui.cardAt(column, row)
+    local order = ui.cardOrder()
+    for position = #order, 1, -1 do
+        local slot = order[position]
+        local card = ui.cards[slot]
+        if column >= card.column and column < card.column + card.width and row >= card.row and row < card.row + card.height then
+            return slot
+        end
+    end
+end
+
+function ui.cardName(slot)
+    local card = ui.cards[slot]
+    local name = card.names and card.names[ui.reactorPage] or ""
+    return name ~= "" and name or ("Реактор #" .. ((ui.reactorPage - 1) * 6 + slot))
+end
+
+function ui.drawReactorArt(left, top, width, height)
     if ui.artTheme ~= theme or not ui.art then
         local palette = theme and {
             armor = 0xC4D5CB, rim = 0xB3CBBE, face = 0xCED7DC,
@@ -3144,10 +3179,10 @@ function ui.drawReactorArt()
         end
         ui.artTheme = theme
     end
-    for row = 1, 15 do
-        for column = 1, 100 do
-            local pixel = ui.art[row][column]
-            buffer.set(column, row + 5, pixel[1], pixel[2], "▀")
+    for row = top or 6, (top or 6) + (height or 15) - 1 do
+        for column = left or 1, (left or 1) + (width or 100) - 1 do
+            local pixel = ui.art[row - 5][column]
+            buffer.set(column, row, pixel[1], pixel[2], "▀")
         end
     end
 end
@@ -3190,33 +3225,37 @@ function ui.render()
             end
         end
     else
-        for slot = 1, 6 do
+        for _, slot in ipairs(ui.cardOrder()) do
             local index = (ui.reactorPage - 1) * 6 + slot
             local card = ui.cards[slot]
             local column, row = card.column, card.row
             local contentWidth = card.width - 2
+            if showArt then ui.drawReactorArt(column, row, card.width, card.height) end
             buffer.drawRectangle(column, row, card.width, card.height, ui.panel, 0, " ", showArt and 0.65 or nil)
             if ui.editing and ui.selected == slot then
                 buffer.drawRectangle(column, row, card.width, 1, theme and 0xB5D7F0 or 0x314C61, 0, " ")
             end
             if index <= reactors then
                 local state = reactor_aborted[index] and "АВАРИЯ" or (reactor_work[index] and "РАБОТА" or "СТОП")
-                ui.text(column + 1, row, contentWidth, "#" .. index .. " " .. (reactor_type[index] or "-") .. "   " .. state, reactor_aborted[index] and ui.bad or (reactor_work[index] and ui.good or ui.muted))
-                ui.text(column + 1, row + 1, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
-                ui.text(column + 1, row + 2, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
+                local title = ui.cardName(slot)
+                if card.names and card.names[ui.reactorPage] ~= "" then title = "#" .. index .. " " .. title end
+                ui.text(column + 1, row, contentWidth, title, reactor_aborted[index] and ui.bad or (reactor_work[index] and ui.good or ui.muted))
+                ui.text(column + 1, row + 1, contentWidth, (reactor_type[index] or "-") .. " | " .. state, reactor_aborted[index] and ui.bad or ui.muted)
+                ui.text(column + 1, row + 2, contentWidth, tostring(temperature[index] or 0) .. "°C | " .. ui.value(reactor_rf[index], formatRF) .. "/t")
+                ui.text(column + 1, row + 3, contentWidth, "Распад: " .. secondsToHMS(reactor_depletionTime[index] or 0))
                 local coolant = "-"
                 if reactor_type[index] == "Fluid" then
                     coolant = tostring(reactor_getcoolant[index] or 0) .. "/" .. tostring(reactor_maxcoolant[index] or 0)
                 end
-                ui.text(column + 1, row + 3, contentWidth, "Буфер: " .. coolant)
-                ui.text(column + 1, row + 4, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/s")
+                ui.text(column + 1, row + 4, contentWidth, "Буфер: " .. coolant)
+                ui.text(column + 1, row + 5, contentWidth, "Расход: " .. (reactor_type[index] == "Fluid" and (reactor_ConsumptionPerSecond[index] or 0) or 0) .. " mB/s")
                 if reactor_aborted[index] then
-                    ui.text(column + 1, row + card.height - 2, contentWidth, reason or "Запуск заблокирован", ui.bad)
+                    ui.text(column + 1, row + card.height - 1, contentWidth, reason or "Запуск заблокирован", ui.bad)
                 elseif not ui.editing then
                     ui.button(column + 1, row + card.height - 1, contentWidth, reactor_work[index] and "Отключить" or "Включить", index, reactor_work[index] and ui.good or ui.muted)
                 end
             elseif ui.editing then
-                ui.text(column + 1, row, contentWidth, "Слот #" .. slot, ui.muted)
+                ui.text(column + 1, row, contentWidth, ui.cardName(slot), ui.muted)
             end
             if ui.editing then
                 ui.text(column + 1, row + card.height - 1, contentWidth, "Перетащить", ui.muted)
@@ -3235,7 +3274,10 @@ function ui.render()
         ui.button(68, 22, 15, "Сохранить", "save")
         ui.button(84, 22, 16, "Отмена", "cancel")
         local selected = ui.cards[ui.selected]
-        ui.text(2, 23, 97, "Слот #" .. ui.selected .. " " .. selected.width .. "x" .. selected.height .. " | Тяни карточку / угол +. Стрелки: сдвиг. Enter: сохранить.", ui.muted)
+        ui.button(1, 23, 16, "Имя / F2", "rename")
+        ui.button(18, 23, 53, ui.renaming and ((ui.nameDraft or "") .. "|") or ui.cardName(ui.selected), "rename")
+        ui.text(73, 23, 26, "#" .. ((ui.reactorPage - 1) * 6 + ui.selected) .. "  " .. selected.width .. "x" .. selected.height, ui.muted)
+        ui.text(2, 24, 97, ui.renaming and "Введи название. Enter: принять. Esc: отменить ввод." or "Tab: выбрать и поднять карточку. Стрелки: сдвиг. Enter: сохранить. Esc: отмена.", ui.muted)
     else
         ui.text(2, 22, 97, "Flux: " .. (ui.fluxInfo and (ui.value(ui.fluxInfo.energyInput, formatFluxRF) .. "/t > " .. ui.value(ui.fluxInfo.energyOutput, formatFluxRF) .. "/t") or "не подключена"), ui.muted)
         ui.text(2, 23, 97, "Работа: " .. secondsToHMS(hour * 3600 + minute * 60 + second) .. " | МЭ через: " .. (me_network and (60 - MeSecond) or 0) .. " с | Распад: " .. secondsToHMS(depletionTime), ui.muted)
@@ -3255,8 +3297,26 @@ function ui.render()
     buffer.drawChanges()
 end
 
+function ui.commitName()
+    if not ui.renaming then return end
+    local card = ui.cards[ui.selected]
+    card.names = card.names or {"", ""}
+    card.names[ui.reactorPage] = (ui.nameDraft or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    ui.renaming = false
+    ui.nameDraft = nil
+    ui.notice = "Название изменено. Нажми Сохранить."
+end
+
+function ui.nameInput(text)
+    if not ui.editing or not ui.renaming then return end
+    text = tostring(text or ""):gsub("[%z\1-\31\127]", " ")
+    ui.nameDraft = unicode.sub((ui.nameDraft or "") .. text, 1, 32)
+    ui.render()
+end
+
 function ui.finishEdit(save)
     ui.dragging = nil
+    if save then ui.commitName() else ui.renaming = false; ui.nameDraft = nil end
     if save then
         local saved, errorMessage = layout.write(ui.layoutPath, ui.cards)
         if not saved then
@@ -3275,6 +3335,7 @@ function ui.finishEdit(save)
 end
 
 function ui.editAction(action)
+    if ui.renaming and action ~= "rename" and action ~= "cancel" then ui.commitName() end
     if action == "edit" then
         if ui.editing then ui.finishEdit(true); return true end
         ui.editing = true
@@ -3284,10 +3345,19 @@ function ui.editAction(action)
         ui.notice = "Выбери карточку. Перетаскивай её или угол +; размер можно менять кнопками."
     elseif not ui.editing then
         return false
+    elseif action == "rename" then
+        ui.dragging = nil
+        if not ui.renaming then
+            local card = ui.cards[ui.selected]
+            ui.nameDraft = card.names and card.names[ui.reactorPage] or ""
+            ui.renaming = true
+        end
     elseif action == "save" or action == "cancel" then
         ui.finishEdit(action == "save")
     elseif action == "reset" then
+        local previous = layout.clone(ui.cards)
         ui.cards = layout.defaults()
+        for slot, card in ipairs(ui.cards) do card.names = previous[slot].names end
         ui.dragging = nil
         ui.notice = "Стандартная раскладка. Нажми Сохранить."
     elseif action == "width-" or action == "width+" or action == "height-" or action == "height+" then
@@ -3331,34 +3401,30 @@ function ui.drop(column, row)
     if not ui.editing or not ui.dragging then return end
     ui.drag(column, row)
     local valid, errorMessage = layout.validate(ui.cards)
-    local swapped = false
-    if not valid and not ui.dragging.resize and not ui.dragging.keyboard then
-        local previous = ui.dragging.cards
-        for slot, target in ipairs(previous) do
-            if slot ~= ui.selected and column >= target.column and column < target.column + target.width
-                and row >= target.row and row < target.row + target.height then
-                local candidate = layout.clone(previous)
-                candidate[ui.selected].column, candidate[slot].column = candidate[slot].column, candidate[ui.selected].column
-                candidate[ui.selected].row, candidate[slot].row = candidate[slot].row, candidate[ui.selected].row
-                if layout.validate(candidate) then
-                    ui.cards = candidate
-                    valid, swapped = true, true
-                end
-                break
-            end
-        end
-    end
     if not valid then ui.cards = ui.dragging.cards end
     ui.dragging = nil
-    ui.notice = valid and (swapped and "Карточки поменяны местами. Нажми Сохранить." or "Положение изменено. Нажми Сохранить.") or (errorMessage .. "; изменение отменено")
+    ui.notice = valid and "Положение изменено. Нажми Сохранить." or (errorMessage .. "; изменение отменено")
     ui.render()
 end
 
-function ui.key(code)
+function ui.key(code, character)
     if not ui.editing then return end
+    if ui.renaming then
+        if code == 1 then ui.renaming = false; ui.nameDraft = nil; ui.render(); return end
+        if code == 28 then ui.commitName(); ui.render(); return end
+        if code == 14 then
+            ui.nameDraft = unicode.sub(ui.nameDraft or "", 1, math.max(0, unicode.len(ui.nameDraft or "") - 1))
+            ui.render()
+        elseif type(character) == "number" and character >= 32 and character ~= 127 then
+            local valid, symbol = pcall(unicode.char, character)
+            if valid then ui.nameInput(symbol) end
+        end
+        return
+    end
+    if code == 60 then ui.editAction("rename"); return end
     if code == 1 then ui.finishEdit(false); return end
     if code == 28 then ui.finishEdit(true); return end
-    if code == 15 then ui.selected = ui.selected % 6 + 1; ui.render(); return end
+    if code == 15 then ui.selected = ui.selected % 6 + 1; ui.bringFront(ui.selected); ui.render(); return end
     local steps = {[203] = {-1, 0}, [205] = {1, 0}, [200] = {0, -1}, [208] = {0, 1}}
     local step = steps[code]
     if step then
@@ -3369,24 +3435,28 @@ function ui.key(code)
 end
 
 function ui.touch(column, row, uuid)
+    local topSlot = ui.page == "reactors" and ui.cardAt(column, row) or nil
     if ui.editing and row >= layout.bounds.top and row <= layout.bounds.bottom then
-        for slot = #ui.cards, 1, -1 do
+        if topSlot then
+            ui.commitName()
+            local slot = topSlot
             local card = ui.cards[slot]
-            if column >= card.column and column < card.column + card.width and row >= card.row and row < card.row + card.height then
-                ui.selected = slot
-                ui.dragging = {
-                    column = column, row = row, cards = layout.clone(ui.cards),
-                    resize = column == card.column + card.width - 1 and row == card.row + card.height - 1
-                }
-                ui.notice = "Выбран слот #" .. slot
-                ui.render()
-                return
-            end
+            ui.selected = slot
+            ui.bringFront(slot)
+            ui.dragging = {
+                column = column, row = row, cards = layout.clone(ui.cards),
+                resize = column == card.column + card.width - 1 and row == card.row + card.height - 1
+            }
+            ui.notice = "Выбран слот #" .. slot
+            ui.render()
+            return
         end
         return
     end
-    for _, button in ipairs(ui.buttons) do
-        if row == button.row and column >= button.column and column < button.column + button.width then
+    for position = #ui.buttons, 1, -1 do
+        local button = ui.buttons[position]
+        local visible = type(button.action) ~= "number" or (button.action - 1) % 6 + 1 == topSlot
+        if visible and row == button.row and column >= button.column and column < button.column + button.width then
             local action = button.action
             if ui.editAction(action) then return end
             if action == "next" then
@@ -3715,7 +3785,9 @@ local function mainLoop()
         elseif eventType == "drop" then
             ui.drop(eventData[3], eventData[4])
         elseif eventType == "key_down" then
-            ui.key(eventData[4])
+            ui.key(eventData[4], eventData[3])
+        elseif eventType == "clipboard" then
+            ui.nameInput(eventData[3])
         end
         os.sleep(0)
     end
